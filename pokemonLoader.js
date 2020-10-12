@@ -4,16 +4,17 @@ class PokemonLoader {
         this.pokemons = pokemons;
     }
 
+    opponents = new Promise(resolve => {
+        this.resolveOpponents = resolve;
+    });
+
     async getOpponents() {
-        const opponents = new Promise(resolve => {
-            this.resolveOpponents = resolve;
-        });
-        await this.initializeFields();
+        this.initializeFields();
         this.load();
-        return opponents;
+        return this.opponents;
     }
 
-    async initializeFields() {
+    initializeFields() {
         this.abilities = this.collectAbilities();
         this.abilityFilter = 'none';
         this.startIndex = 0;
@@ -34,18 +35,14 @@ class PokemonLoader {
 
         for (let i = startIndex; i < endIndex; i++) {
             const pokemon = this.filteredPokemons[i];
+
             if (this.abilityFilter === 'none')
                 this.loadSingle(pokemon, i);
             else if (this.getAbility(pokemon.abilities) === this.abilityFilter)
                 this.loadSingle(pokemon, i);
         }
 
-        this.addStaggerEffectOnload('pokemon');
-        this.addStaggerEffectOnUnload('pokemon', 'pokemons-container');
-        this.addStaggerEffectOnUnload('pokemon', 'dropup');
-        this.addStaggerEffectOnUnload('pokemon', 'pagination-button');
-        this.addStaggerEffectOnUnload('pokemon', 'pagination-button-disabled');
-
+        this.addPokemonsEffects();
     }
 
     loadFilteredPokemons() {
@@ -100,16 +97,12 @@ class PokemonLoader {
         const container = document.createElement('span');
         container.id = id;
         container.className = 'pokemon';
-        container.addEventListener('click', () => {
-            setTimeout(() => {
-                do {
-                    var opponentId = Math.floor(Math.random() * this.pokemons.length);
-                } while (opponentId === id);
+        container.addEventListener('click', async () => {
+            const opponentId = this.getRandomId(id);
+            await Waiter.wait(750);
 
-                this.clearPokemons();
-
-                this.resolveOpponents([this.filteredPokemons[id], this.pokemons[opponentId]]);
-            }, 750);
+            this.clearPokemons();
+            this.resolveOpponents([this.filteredPokemons[id], this.pokemons[opponentId]]);
         });
 
         return container;
@@ -180,16 +173,16 @@ class PokemonLoader {
         const dropUpContent = document.createElement('div');
         dropUpContent.className = 'dropup-content';
 
-        this.abilities.forEach((ability) => {
-            const link = document.createElement('i');
-            link.innerText = ability.toString();
-            link.addEventListener('click', () => {
-                this.abilityFilter = ability;
+        this.abilities.forEach((a) => {
+            const ability = document.createElement('i');
+            ability.innerText = a.toString();
+            ability.addEventListener('click', () => {
+                this.abilityFilter = a;
                 this.startIndex = 0;
                 this.clearPokemons();
                 this.load();
             });
-            dropUpContent.appendChild(link);
+            dropUpContent.appendChild(ability);
         });
         return dropUpContent;
     }
@@ -240,18 +233,21 @@ class PokemonLoader {
         button.addEventListener('click', () => {
             this.clearPokemonsContainerContent(document.getElementById('pokemons-container'));
 
-            if (button.id === 'next') {
-                this.startIndex = this.startIndex + 20;
-                this.checkForPaginationButtonDisabling(button, this.startIndex + 20 >= this.filteredPokemons.length);
-                this.checkForPaginationButtonEnabling(document.getElementById('prev'), this.startIndex === 0);
-            } else {
-                this.startIndex = this.startIndex - 20;
-                this.checkForPaginationButtonDisabling(button, this.startIndex === 0);
-                this.checkForPaginationButtonEnabling(document.getElementById('next'), this.startIndex + 20 >= this.filteredPokemons.length);
-            }
+            if (button.id === 'next')
+                this.updateStartIndexAndCheckForButtonsEnablingOrDisabling(this.startIndex + 20, button, 'prev',
+                    this.startIndex + 20 >= this.filteredPokemons.length, this.startIndex === 0);
+            else
+                this.updateStartIndexAndCheckForButtonsEnablingOrDisabling(this.startIndex - 20, button, 'next',
+                    this.startIndex === 0, this.startIndex + 20 >= this.filteredPokemons.length);
             this.clearPokemons();
             this.load();
         })
+    }
+
+    updateStartIndexAndCheckForButtonsEnablingOrDisabling(startIndexNewValue, button, otherButtonId, edgeIsReachedForButton, edgeIsReachedForOtherButton) {
+        this.startIndex = startIndexNewValue;
+        this.checkForPaginationButtonDisabling(button, edgeIsReachedForButton);
+        this.checkForPaginationButtonEnabling(document.getElementById(otherButtonId), edgeIsReachedForOtherButton);
     }
 
     clearPokemonsContainerContent(container) {
@@ -274,6 +270,21 @@ class PokemonLoader {
     checkForPaginationButtonDisabling(button, edgeIsReached) {
         if (edgeIsReached && button.disabled === false)
             this.disablePaginationButton(button);
+    }
+
+    getRandomId(chosenId) {
+        do {
+            var opponentId = Math.floor(Math.random() * this.pokemons.length);
+        } while (opponentId === chosenId);
+        return opponentId;
+    }
+
+    addPokemonsEffects() {
+        this.addStaggerEffectOnload('pokemon');
+        this.addStaggerEffectOnUnload('pokemon', 'pokemons-container');
+        this.addStaggerEffectOnUnload('pokemon', 'dropup');
+        this.addStaggerEffectOnUnload('pokemon', 'pagination-button');
+        this.addStaggerEffectOnUnload('pokemon', 'pagination-button-disabled');
     }
 
     addStaggerEffectOnload(className) {

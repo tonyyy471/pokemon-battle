@@ -14,41 +14,22 @@ class Battle {
         const pokemonSpeed = this.pokemon.stats[5].base_stat;
         const rivalSpeed = this.rival.stats[5].base_stat;
 
-        if (pokemonSpeed === rivalSpeed) {
-            if (Math.floor(Math.random() * 2) === 0) {
-                this.playerOnTurn = 'pokemon';
-                this.playerNotOnTurn = 'rival';
-            } else {
-                this.playerOnTurn = 'rival';
-                this.playerNotOnTurn = 'pokemon';
-            }
-        } else {
-            if (pokemonSpeed > rivalSpeed) {
-                this.playerOnTurn = 'pokemon';
-                this.playerNotOnTurn = 'rival';
-            } else {
-                this.playerOnTurn = 'rival';
-                this.playerNotOnTurn = 'pokemon';
-            }
-        }
+        pokemonSpeed === rivalSpeed ? this.setTurns(Math.floor(Math.random() * 2) === 0 ? 'pokemon' : 'rival') :
+            this.setTurns(pokemonSpeed > rivalSpeed ? 'pokemon' : 'rival');
+    }
+
+    setTurns(playerOnTurn) {
+        this.playerOnTurn = playerOnTurn;
+        this.playerNotOnTurn = playerOnTurn === 'pokemon' ? 'rival' : 'pokemon';
     }
 
     async getWinner() {
-        const winner = new Promise(resolve => {
-            this.resolveWinner = resolve;
-        });
-
         this.load();
-        this.makeMove();
         this.playSound('battle.mp3', 'main');
-
-        await winner;
-
-        setTimeout(() => {
-            this.stopSound('main');
-        }, 100);
-
-        return winner;
+        await this.makeMove();
+        await Waiter.wait(250);
+        this.stopSound('main');
+        return this.winnerMessage;
     }
 
     load() {
@@ -118,37 +99,47 @@ class Battle {
         container.appendChild(image);
     }
 
-    makeMove() {
-        if (this.winnerIsFound(this.pokemonHp, 'You Lose!') || this.winnerIsFound(this.rivalHp, 'You Win!'))
+    async makeMove() {
+        if (await this.winnerIsFound(this.pokemonHp, 'You Lose!') || await this.winnerIsFound(this.rivalHp, 'You Win!'))
             return;
 
         let damage = this.calculateDamage(this.playerOnTurn, this.playerNotOnTurn);
         if (damage > 0) {
-            setTimeout(async () => {
-                this.hideNameAndHealth(this.playerOnTurn);
-                const forwardMove = this.playerOnTurn === 'pokemon' ? this.movePokemon('pokemon', 27, 63, 1) :
-                    this.movePokemon('rival', 66, 30, -1);
-                await forwardMove;
-                await this.blinkThreeTimes(this.playerNotOnTurn);
-                await this.updateHealthAndHealthBar(this.playerNotOnTurn, damage);
-                const backwardMove = this.playerOnTurn === 'pokemon' ? this.movePokemon('pokemon', 63, 63, -1) :
-                    this.movePokemon('rival', 30, 30, 1);
-                await backwardMove;
-                this.showNameAndHealth(this.playerOnTurn);
-                [this.playerOnTurn, this.playerNotOnTurn] = [this.playerNotOnTurn, this.playerOnTurn];
-                this.makeMove();
-            }, 1000)
+            await Waiter.wait(1000);
+
+            this.hideNameAndHealth(this.playerOnTurn);
+
+            if (this.playerOnTurn === 'pokemon') this.movePokemon('pokemon', 27, 63, 1);
+            else this.movePokemon('rival', 66, 30, -1);
+            await Waiter.wait(2000);
+
+            await this.blinkThreeTimes(this.playerNotOnTurn);
+            await Waiter.wait(500);
+
+            const timeUpdatingHealthBar = await this.updateHealthAndHealthBar(this.playerNotOnTurn, damage);
+            await Waiter.wait(timeUpdatingHealthBar);
+
+            if (this.playerOnTurn === 'pokemon') this.movePokemon('pokemon', 63, 63, -1);
+            else this.movePokemon('rival', 30, 30, 1);
+            await Waiter.wait(2000);
+
+            this.showNameAndHealth(this.playerOnTurn);
+            this.changeTurns();
+            await this.makeMove();
         } else {
-            [this.playerOnTurn, this.playerNotOnTurn] = [this.playerNotOnTurn, this.playerOnTurn];
-            this.makeMove();
+            this.changeTurns();
+            await this.makeMove();
         }
     }
 
-    winnerIsFound(pokemonHp, message) {
+    changeTurns() {
+        [this.playerOnTurn, this.playerNotOnTurn] = [this.playerNotOnTurn, this.playerOnTurn];
+    }
+
+    async winnerIsFound(pokemonHp, message) {
         if (pokemonHp <= 0) {
-            setTimeout(() => {
-                this.resolveWinner(message);
-            }, 500);
+            this.winnerMessage = message;
+            await Waiter.wait(500);
             return true;
         }
         return false;
@@ -162,19 +153,9 @@ class Battle {
     }
 
     movePokemon(playerOnTurn, startPosition, endPosition, direction) {
-        let resolveMove;
-        const move = new Promise((resolve => {
-            resolveMove = resolve;
-        }));
-
         const playerOnTurnContainer = document.getElementById(playerOnTurn);
-
         const distance = Math.abs(startPosition - endPosition);
-
-        this.addMoveEffect(playerOnTurn,distance, direction);
-        setTimeout(resolveMove, 2000);
-
-        return move;
+        this.addMoveEffect(playerOnTurn, distance, direction);
     }
 
     hideNameAndHealth(playerOnTurn) {
@@ -187,47 +168,34 @@ class Battle {
         document.getElementById(playerOnTurn + '-health').style.visibility = 'visible';
     }
 
-    blinkThreeTimes(playerNotOnTurn) {
-        let resolveBlink;
-        const blinkThreeTimes = new Promise((resolve => {
-            resolveBlink = resolve;
-        }));
-
+    async blinkThreeTimes(playerNotOnTurn) {
         const img = document.getElementById(playerNotOnTurn + '-img');
 
         const original = img.src;
         const shiny = playerNotOnTurn === 'pokemon' ? this[playerNotOnTurn].sprites.back_shiny : this[playerNotOnTurn].sprites.front_shiny;
 
-        let counter = 0;
-        const interval = setInterval(() => {
-            if (img.src === original) {
-                img.src = shiny;
-                this.playSound('punch.wav', 'punch');
-                setTimeout(() => {
-                    this.stopSound('punch');
-                }, 300);
-            } else
-                img.src = original;
-
-            counter++;
-
-            if (counter === 6) {
-                clearInterval(interval);
-                setTimeout(() => {
-                    resolveBlink();
-                }, 750)
-            }
-        }, 750);
-
-        return blinkThreeTimes;
+        for (let i = 0; i < 6; i++) {
+            await Waiter.wait(500);
+            this.changeSprite(img, original, shiny);
+            if (i % 2 === 0)
+                await this.addPunchSound();
+        }
     }
 
-    updateHealthAndHealthBar(playerNotOnTurn, damage) {
-        let resolveHealthUpdate;
-        const updateHealth = new Promise((resolve) => {
-            resolveHealthUpdate = resolve;
-        });
+    changeSprite(img, original, shiny) {
+        if (img.src === original) {
+            img.src = shiny;
+        } else
+            img.src = original;
+    }
 
+    async addPunchSound() {
+        this.playSound('punch.wav', 'punch');
+        await Waiter.wait(300);
+        this.stopSound('punch');
+    }
+
+    async updateHealthAndHealthBar(playerNotOnTurn, damage) {
         const initialHealth = this[playerNotOnTurn].stats[0].base_stat;
         const oldHealth = this[playerNotOnTurn + 'Hp'];
         const newHealth = oldHealth - damage;
@@ -239,23 +207,24 @@ class Battle {
         let oldHealthBar = (oldHealth / initialHealth) * 100;
         const newHealthBar = this[playerNotOnTurn + 'Hp'] < 0 ? 0 : (newHealth / oldHealth) * 100;
 
-        let interval = setInterval(() => {
-            oldHealthBar--;
-            bar.style.width = oldHealthBar + '%';
+        this.declineHealthBar(bar, oldHealthBar, newHealthBar);
 
-            if (oldHealthBar <= 10) {
-                bar.style.backgroundColor = 'red';
-            } else if (oldHealthBar <= 50) {
-                bar.style.backgroundColor = 'yellow';
-            }
+        return ((oldHealthBar - newHealthBar) * 10) + 750;
+    }
 
-            if (oldHealthBar < newHealthBar) {
-                setTimeout(resolveHealthUpdate, 250);
-                clearInterval(interval);
-            }
-        }, 10);
+    declineHealthBar(bar, oldHealthBar, newHealthBar) {
+        async function declineHealthBar() {
+            await Waiter.wait(10);
+            bar.style.width = --oldHealthBar + '%';
 
-        return updateHealth;
+            if (oldHealthBar <= 10) bar.style.backgroundColor = 'red';
+            else if (oldHealthBar <= 50) bar.style.backgroundColor = 'yellow';
+
+            if (oldHealthBar > newHealthBar)
+                window.requestAnimationFrame(declineHealthBar);
+        }
+
+        window.requestAnimationFrame(declineHealthBar);
     }
 
     playSound(src, id) {
@@ -277,7 +246,7 @@ class Battle {
         gsap.to('#' + id, {duration: 1.5, y: 26 + 'vh', ease: "bounce"});
     }
 
-    addMoveEffect(playerOnTurn,distance, direction) {
+    addMoveEffect(playerOnTurn, distance, direction) {
         gsap.to('#' + playerOnTurn, {duration: 2.5, x: (distance * direction) + 'vw', ease: 'circ.out'});
     }
 }

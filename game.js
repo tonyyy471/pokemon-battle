@@ -6,48 +6,55 @@ class Game {
     async start() {
         this.loadLoadingMessage();
 
-        const pokemonFetcher = new PokemonFetcher();
-        const pokemons = await pokemonFetcher.fetchMaxFiveHundredPokemons(100);
+        const pokemons = await new PokemonFetcher().fetchMaxFiveHundredPokemons(100);
+        await this.clearScreen(500, 'loading-container', 'loading-container');
 
-        this.addStaggerEffectOnUnload('loading-container');
-        await this.clearScreen('loading-container', 500);
+        const opponents = await new PokemonLoader(pokemons).getOpponents();
+        const outcome = await new Battle(...opponents).getWinner();
+        await this.clearScreen(500, 'opponents-container', 'opponents-container');
 
-        const pokemonLoader = new PokemonLoader(pokemons);
-        const opponents = await pokemonLoader.getOpponents();
-
-        const battle = new Battle(...opponents);
-        const outcome = await battle.getWinner();
-
-        this.addStaggerEffectOnUnload('opponents-container');
-        await this.clearScreen('opponents-container', 500);
         this.loadFinalMessageAndReplayButton(outcome);
     }
 
-    clearScreen(elementId, timeOut) {
-        setTimeout(() => {
-            document.body.removeChild(document.getElementById(elementId));
-        }, timeOut);
-
-        return new Promise((resolve) => {
-            setTimeout(resolve, timeOut);
-        })
+    async clearScreen(delay, elementToRemove, ...elementsToAddEffect) {
+        elementsToAddEffect.forEach((id) => {
+            this.addStaggerEffectOnUnload(id);
+        });
+        await Waiter.wait(delay);
+        document.body.removeChild(document.getElementById(elementToRemove));
     }
 
     loadLoadingMessage() {
-        const container = this.loadContainer('loading-container');
-        const message = this.loadMessage('loading-message', 'loading...');
-        container.appendChild(message);
-        document.body.appendChild(container);
+        const loadingMessageContainer = this.loadCanvas('loading-container', 500, 200);
+        this.addMessage(loadingMessageContainer, 'loading...', 250, 100, '3vw');
+        document.body.appendChild(loadingMessageContainer);
+        this.addStaggerEffectOnload('loading-container');
+    }
 
-        this.addStaggerEffectOnload('loading-message');
+    loadCanvas(id, width, height) {
+        const canvas = document.createElement('canvas');
+        canvas.id = id;
+        canvas.width = width;
+        canvas.height = height;
+        return canvas;
+    }
+
+    addMessage(canvas, message, x, y, fontSize) {
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'rgba(232, 236, 241, 0.7)';
+        ctx.font = `italic ${fontSize} Arial`;
+        ctx.textAlign = 'center';
+        ctx.fillText(message, x, y);
     }
 
     loadFinalMessageAndReplayButton(msg) {
         const container = this.loadContainer('final-container');
-        const message = this.loadMessage('win-message', msg);
+
+        const winMessageContainer = this.loadCanvas('win-message', 800, 300);
+        this.addMessage(winMessageContainer, msg, 400, 150, '7vw');
         const button = this.loadButton();
 
-        container.append(message, button);
+        container.append(winMessageContainer, button);
         document.body.appendChild(container);
 
         this.addStaggerEffectOnload('win-message');
@@ -60,24 +67,13 @@ class Game {
         return container;
     }
 
-    loadMessage(id, msg) {
-        const message = document.createElement('i');
-        message.id = id;
-        message.innerText = msg;
-        return message;
-    }
-
     loadButton() {
         const button = document.createElement('button');
         button.id = 'replay-button';
         button.innerText = 'Play Again';
-        button.addEventListener('click', () => {
-            this.addStaggerEffectOnUnload('win-message');
-            this.addStaggerEffectOnUnload('replay-button');
-            setTimeout(() => {
-                this.clearScreen('final-container');
-                this.start();
-            }, 500);
+        button.addEventListener('click', async () => {
+            await this.clearScreen(500, 'final-container', 'win-message', 'replay-button');
+            await this.start();
         });
         return button;
     }
